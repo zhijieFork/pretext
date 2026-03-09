@@ -48,7 +48,8 @@ Internal notes for contributors and agents. Use `README.md` as the public source
 - For Arabic corpus work, trust the RTL `Range`-based diagnostics over the old span-probe path. The remaining misses are currently more about break policy than raw width sums.
 - For Arabic probe work, always use normalized corpus slices and the exact corpus font. Raw file offsets or a rough fallback font will mislead you.
 - The corpus/probe diagnostic pages now compute our line offsets directly from prepared segments and grapheme fallbacks; do not go back to reconstructing them from `layoutWithLines().line.text.length`.
-- The Arabic corpus text has already been cleaned for quote-before-punctuation spacing artifacts like `" ،`, `" .`, and `" ؟`; treat that as corpus hygiene, not as engine behavior.
+- The Arabic corpus text has already been cleaned for quote-before-punctuation spacing artifacts like `" ،`, `" .`, and `" ؟`, plus a few obvious `space + punctuation` typos (`هيهات !`, `دجاك ؟!`, `القيان :`). Treat those as corpus hygiene, not engine behavior.
+- The repeated Arabic fine-width miss around `قوله:"...` was also a source-text issue; normalizing that one occurrence to `قوله: “...` removed several widths without touching the engine.
 
 ### Open questions
 

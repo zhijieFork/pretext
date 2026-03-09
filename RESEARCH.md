@@ -506,6 +506,30 @@ The remaining lesson is:
 - distrust reconstructed offsets when a mismatch suddenly looks stranger than the height diff
 - prefer corpus cleanup over engine rules when the remaining miss is clearly source-text noise
 
+## Arabic source cleanup, round two
+
+A second pass over the Arabic corpus focused only on obvious source-text artifacts, not engine logic:
+- removed remaining spaces before punctuation such as `هيهات !`, `دجاك ؟!`, `القيان :`
+- normalized one repeated quote-introducer pattern:
+  - `قوله:"..."`
+  - to `قوله: “..."`
+
+That one quote-introducer occurrence was disproportionately important. It accounted for the repeated
+fine-sweep misses at widths like `463`, `464`, and `498`.
+
+Effect on the Chrome Arabic fine sweep (`300..900`, step `1`):
+- before: `574/601 exact`
+- after: `581/601 exact`
+
+What remained after the source cleanup:
+- one negative width (`527`) that still looks like a real local break-choice mismatch
+- a larger set of positive one-line widths that continue to look like tiny browser edge-tolerance cases
+
+So the current evidence is:
+- source cleanup still matters for this corpus
+- but the remaining Arabic fine field is no longer mostly source noise
+- the main unresolved class is now small line-edge tolerance, not broad preprocessing mistakes
+
 The current verification loop:
 - `bun run accuracy-check`
 - `bun run accuracy-check:safari`
