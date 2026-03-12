@@ -16,12 +16,15 @@ import {
 
 const BODY_FONT = '16px "Helvetica Neue", Helvetica, Arial, sans-serif'
 const BODY_LINE_HEIGHT = 25
+const CREDIT_TEXT = 'Leopold Aschenbrenner'
+const CREDIT_FONT = '12px "Helvetica Neue", Helvetica, Arial, sans-serif'
 const CREDIT_LINE_HEIGHT = 16
 const HEADLINE_TEXT = 'SITUATIONAL AWARENESS: THE DECADE AHEAD'
 const HEADLINE_FONT_FAMILY = '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif'
 const OPENAI_LOGO_SRC = openaiLogoUrl
 const CLAUDE_LOGO_SRC = claudeLogoUrl
 const HEADLINE_WORDS = HEADLINE_TEXT.split(/\s+/)
+const HINT_PILL_SAFE_TOP = 72
 
 type LogoKind = 'openai' | 'claude'
 type SpinState = {
@@ -60,6 +63,7 @@ type PageLayout = {
   headlineLines: LayoutLine[]
   headlineRects: Rect[]
   creditTop: number
+  creditRegion: Rect
   leftRegion: Rect
   rightRegion: Rect
   openaiRect: Rect
@@ -107,7 +111,7 @@ function createHeadline(): HTMLHeadingElement {
 function createCredit(): HTMLParagraphElement {
   const element = document.createElement('p')
   element.className = 'credit'
-  element.textContent = 'Leopold Aschenbrenner'
+  element.textContent = CREDIT_TEXT
   return element
 }
 
@@ -291,6 +295,8 @@ function projectStaticLayout(layout: PageLayout): void {
   domCache.credit.style.left = `${layout.gutter + 4}px`
   domCache.credit.style.top = `${layout.creditTop}px`
   domCache.credit.style.width = 'auto'
+  domCache.credit.style.font = CREDIT_FONT
+  domCache.credit.style.lineHeight = `${CREDIT_LINE_HEIGHT}px`
 }
 
 function getPreparedSingleLineWidth(text: string, font: string, lineHeight: number): number {
@@ -403,7 +409,7 @@ function buildLayout(pageWidth: number, pageHeight: number, lineHeight: number):
   const centerGap = Math.round(Math.max(28, pageWidth * 0.025))
   const columnWidth = Math.round((pageWidth - gutter * 2 - centerGap) / 2)
 
-  const headlineTop = Math.round(Math.max(42, pageWidth * 0.04))
+  const headlineTop = Math.round(Math.max(42, pageWidth * 0.04, HINT_PILL_SAFE_TOP))
   const headlineWidth = Math.round(Math.min(pageWidth - gutter * 2, Math.max(columnWidth, pageWidth * 0.5)))
   const headlineFontSize = fitHeadlineFontSize(headlineWidth, pageWidth)
   const headlineLineHeight = Math.round(headlineFontSize * 0.92)
@@ -428,6 +434,13 @@ function buildLayout(pageWidth: number, pageHeight: number, lineHeight: number):
   const OPENAI_SIZE = 400 - openaiShrinkT * 56
   const openaiSize = Math.round(Math.min(OPENAI_SIZE, pageHeight * 0.43))
   const claudeSize = Math.round(Math.max(276, Math.min(500, pageWidth * 0.355, pageHeight * 0.45)))
+
+  const creditRegion: Rect = {
+    x: gutter + 4,
+    y: creditTop,
+    width: headlineWidth,
+    height: CREDIT_LINE_HEIGHT,
+  }
 
   const leftRegion: Rect = {
     x: gutter,
@@ -466,6 +479,7 @@ function buildLayout(pageWidth: number, pageHeight: number, lineHeight: number):
     headlineLines,
     headlineRects,
     creditTop,
+    creditRegion,
     leftRegion,
     rightRegion,
     openaiRect,
@@ -478,6 +492,7 @@ async function evaluateLayout(
   lineHeight: number,
   preparedBody: PreparedTextWithSegments,
 ): Promise<{
+  creditLeft: number
   leftLines: PositionedLine[]
   rightLines: PositionedLine[]
 }> {
@@ -509,6 +524,27 @@ async function evaluateLayout(
     verticalPadding: Math.round(lineHeight * 0.3),
   }
 
+  const creditWidth = Math.ceil(getPreparedSingleLineWidth(CREDIT_TEXT, CREDIT_FONT, CREDIT_LINE_HEIGHT))
+  const creditBlocked = getObstacleIntervals(
+    openaiObstacle,
+    layout.creditRegion.y,
+    layout.creditRegion.y + layout.creditRegion.height,
+  )
+  const creditSlots = subtractIntervals(
+    {
+      left: layout.creditRegion.x,
+      right: layout.creditRegion.x + layout.creditRegion.width,
+    },
+    creditBlocked,
+  )
+  let creditLeft = layout.creditRegion.x
+  for (const slot of creditSlots) {
+    if (slot.right - slot.left >= creditWidth) {
+      creditLeft = Math.round(slot.left)
+      break
+    }
+  }
+
   const leftResult = layoutColumn(
     preparedBody,
     { segmentIndex: 0, graphemeIndex: 0 },
@@ -528,6 +564,7 @@ async function evaluateLayout(
   )
 
   return {
+    creditLeft,
     leftLines: leftResult.lines,
     rightLines: rightResult.lines,
   }
@@ -542,7 +579,8 @@ async function render(now = performance.now()): Promise<void> {
   const preparedBody = getPrepared(BODY_COPY, font)
   const layout = buildLayout(pageWidth, pageHeight, lineHeight)
   projectStaticLayout(layout)
-  const { leftLines, rightLines } = await evaluateLayout(layout, lineHeight, preparedBody)
+  const { creditLeft, leftLines, rightLines } = await evaluateLayout(layout, lineHeight, preparedBody)
+  domCache.credit.style.left = `${creditLeft}px`
   syncPool(domCache.bodyLines, leftLines.length + rightLines.length, () => {
     const element = document.createElement('div')
     element.className = 'line'

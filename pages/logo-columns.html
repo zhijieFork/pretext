@@ -34,6 +34,46 @@
         position: relative;
         height: 100vh;
         overflow: hidden;
+        isolation: isolate;
+      }
+
+      .atmosphere {
+        position: absolute;
+        inset: -10%;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 1;
+      }
+
+      .atmosphere--left {
+        background:
+          radial-gradient(62% 54% at 16% 82%, rgba(45, 88, 128, 0.16), transparent 69%),
+          radial-gradient(44% 34% at 28% 64%, rgba(57, 78, 124, 0.07), transparent 76%);
+      }
+
+      .atmosphere--right {
+        background:
+          radial-gradient(58% 48% at 86% 16%, rgba(217, 119, 87, 0.18), transparent 70%),
+          linear-gradient(135deg, rgba(217, 119, 87, 0.055) 0%, rgba(217, 119, 87, 0.02) 24%, transparent 42%, rgba(45, 88, 128, 0.045) 100%);
+      }
+
+      .hint-pill {
+        position: fixed;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        margin: 0;
+        padding: 10px 16px 11px;
+        border-radius: 999px;
+        background: rgba(17, 16, 13, 0.94);
+        color: rgba(246, 240, 230, 0.96);
+        font: 500 12px/1.2 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        letter-spacing: 0.015em;
+        white-space: nowrap;
+        user-select: none;
+        pointer-events: none;
+        z-index: 5;
+        box-shadow: 0 14px 32px rgba(17, 16, 13, 0.16);
       }
 
       .stage {
@@ -97,6 +137,9 @@
   </head>
   <body>
     <main class="page">
+      <div class="atmosphere atmosphere--left"></div>
+      <div class="atmosphere atmosphere--right"></div>
+      <p class="hint-pill">Resize the browser horizontally and vertically, and try clicking the logos.</p>
       <div id="stage" class="stage"></div>
     </main>
 
