@@ -1,11 +1,15 @@
 import { layoutNextLine, layoutWithLines, prepareWithSegments, type LayoutCursor, type LayoutLine, type PreparedTextWithSegments } from '../src/layout.ts'
 import { BODY_COPY } from './logo-columns-text.ts'
+import openaiLogoUrl from './assets/openai-symbol.svg'
+import claudeLogoUrl from './assets/claude-symbol.svg'
 
 const BODY_FONT = '16px "Helvetica Neue", Helvetica, Arial, sans-serif'
 const BODY_LINE_HEIGHT = 25
 const CREDIT_LINE_HEIGHT = 16
-const HEADLINE_TEXT = 'SITUATIONAL AWARENESS: THE DECADE AHEAD'
+const HEADLINE_TEXT = '1 SITUATIONAL AWARENESS: THE DECADE AHEAD'
 const HEADLINE_FONT_FAMILY = '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif'
+const OPENAI_LOGO_SRC = openaiLogoUrl
+const CLAUDE_LOGO_SRC = claudeLogoUrl
 
 type Rect = {
   x: number
@@ -45,10 +49,15 @@ type WrapHullOptions = {
 }
 
 const stage = document.getElementById('stage') as HTMLDivElement
-const headline = document.getElementById('headline') as HTMLHeadingElement
-const credit = document.getElementById('credit') as HTMLParagraphElement
-const openaiLogo = document.getElementById('openai-logo') as HTMLImageElement
-const claudeLogo = document.getElementById('claude-logo') as HTMLImageElement
+
+type DomCache = {
+  headline: HTMLHeadingElement // cache lifetime: page
+  credit: HTMLParagraphElement // cache lifetime: page
+  openaiLogo: HTMLImageElement // cache lifetime: page
+  claudeLogo: HTMLImageElement // cache lifetime: page
+  headlineLines: HTMLDivElement[] // cache lifetime: headline line count
+  bodyLines: HTMLDivElement[] // cache lifetime: visible line count
+}
 
 const preparedByKey = new Map<string, PreparedTextWithSegments>()
 const wrapHullByKey = new Map<string, Promise<Point[]>>()
@@ -69,6 +78,49 @@ let claudeSpin: {
   start: number
   duration: number
 } | null = null
+
+const domCache: DomCache = {
+  headline: createHeadline(),
+  credit: createCredit(),
+  openaiLogo: createLogo('logo logo--openai', 'OpenAI symbol', OPENAI_LOGO_SRC),
+  claudeLogo: createLogo('logo logo--claude', 'Claude symbol', CLAUDE_LOGO_SRC),
+  headlineLines: [],
+  bodyLines: [],
+}
+let mounted = false
+
+function createHeadline(): HTMLHeadingElement {
+  const element = document.createElement('h1')
+  element.className = 'headline'
+  return element
+}
+
+function createCredit(): HTMLParagraphElement {
+  const element = document.createElement('p')
+  element.className = 'credit'
+  element.textContent = 'Leopold Aschenbrenner'
+  return element
+}
+
+function createLogo(className: string, alt: string, src: string): HTMLImageElement {
+  const element = document.createElement('img')
+  element.className = className
+  element.alt = alt
+  element.src = src
+  element.draggable = false
+  return element
+}
+
+function ensureMounted(): void {
+  if (mounted) return
+  stage.append(
+    domCache.headline,
+    domCache.credit,
+    domCache.openaiLogo,
+    domCache.claudeLogo,
+  )
+  mounted = true
+}
 
 function getTypography(): { font: string, lineHeight: number } {
   return { font: BODY_FONT, lineHeight: BODY_LINE_HEIGHT }
@@ -425,24 +477,81 @@ function layoutColumn(
   return { lines, cursor }
 }
 
-function clearRenderedLines(): void {
-  const lines = stage.querySelectorAll('.line')
-  lines.forEach(line => {
-    line.remove()
-  })
+function syncPool<T extends HTMLElement>(
+  pool: T[],
+  length: number,
+  create: () => T,
+  parent: HTMLElement = stage,
+): void {
+  while (pool.length < length) {
+    const element = create()
+    pool.push(element)
+    parent.appendChild(element)
+  }
+  while (pool.length > length) {
+    const element = pool.pop()!
+    element.remove()
+  }
 }
 
-function materializeLines(lines: PositionedLine[], className: string, font: string, lineHeight: number): void {
-  for (const line of lines) {
+function projectHeadlineLines(lines: LayoutLine[], font: string, lineHeight: number): void {
+  syncPool(domCache.headlineLines, lines.length, () => {
     const element = document.createElement('div')
+    element.className = 'headline-line'
+    return element
+  }, domCache.headline)
+
+  for (const [index, line] of lines.entries()) {
+    const element = domCache.headlineLines[index]!
+    element.textContent = line.text
+    element.style.left = '0px'
+    element.style.top = `${index * lineHeight}px`
+    element.style.font = font
+    element.style.lineHeight = `${lineHeight}px`
+  }
+}
+
+function projectBodyLines(lines: PositionedLine[], className: string, font: string, lineHeight: number, startIndex: number): number {
+  for (const [offset, line] of lines.entries()) {
+    const element = domCache.bodyLines[startIndex + offset]!
     element.className = className
     element.textContent = line.text
     element.style.left = `${line.x}px`
     element.style.top = `${line.y}px`
     element.style.font = font
     element.style.lineHeight = `${lineHeight}px`
-    stage.appendChild(element)
   }
+  return startIndex + lines.length
+}
+
+function projectStaticLayout(layout: ReturnType<typeof buildLayout>): void {
+  ensureMounted()
+  stage.style.height = `${document.documentElement.clientHeight}px`
+
+  domCache.openaiLogo.style.left = `${layout.openaiRect.x}px`
+  domCache.openaiLogo.style.top = `${layout.openaiRect.y}px`
+  domCache.openaiLogo.style.width = `${layout.openaiRect.width}px`
+  domCache.openaiLogo.style.height = `${layout.openaiRect.height}px`
+  domCache.openaiLogo.style.transform = `rotate(${openaiAngle}rad)`
+
+  domCache.claudeLogo.style.left = `${layout.claudeRect.x}px`
+  domCache.claudeLogo.style.top = `${layout.claudeRect.y}px`
+  domCache.claudeLogo.style.width = `${layout.claudeRect.width}px`
+  domCache.claudeLogo.style.height = `${layout.claudeRect.height}px`
+  domCache.claudeLogo.style.transform = `rotate(${claudeAngle}rad)`
+
+  domCache.headline.style.left = `${layout.gutter}px`
+  domCache.headline.style.top = `${layout.headlineTop}px`
+  domCache.headline.style.width = `${layout.headlineWidth}px`
+  domCache.headline.style.height = `${layout.headlineLines.length * layout.headlineLineHeight}px`
+  domCache.headline.style.font = `700 ${layout.headlineFontSize}px ${HEADLINE_FONT_FAMILY}`
+  domCache.headline.style.lineHeight = `${layout.headlineLineHeight}px`
+  domCache.headline.style.letterSpacing = '0px'
+  projectHeadlineLines(layout.headlineLines, `700 ${layout.headlineFontSize}px ${HEADLINE_FONT_FAMILY}`, layout.headlineLineHeight)
+
+  domCache.credit.style.left = `${layout.gutter + 4}px`
+  domCache.credit.style.top = `${layout.creditTop}px`
+  domCache.credit.style.width = 'auto'
 }
 
 function getPreparedSingleLineWidth(text: string, font: string, lineHeight: number): number {
@@ -593,8 +702,9 @@ function buildLayout(pageWidth: number, pageHeight: number, lineHeight: number):
 
   const openaiTopLimit = copyTop + Math.round(lineHeight * 1.95)
   const maxOpenaiSizeByHeight = Math.floor((pageHeight - gutter - openaiTopLimit) / 1.03)
-  const openaiSize = Math.round(Math.max(148, Math.min(350, pageWidth * 0.198, maxOpenaiSizeByHeight)))
-  const claudeSize = Math.round(Math.max(286, Math.min(500, pageWidth * 0.405, pageHeight * 0.47)))
+  const openaiWidthFactor = Math.min(0.226, 0.198 + Math.max(0, 1100 - pageWidth) * 0.00006)
+  const openaiSize = Math.round(Math.max(148, Math.min(366, pageWidth * openaiWidthFactor, maxOpenaiSizeByHeight)))
+  const claudeSize = Math.round(Math.max(252, Math.min(428, pageWidth * 0.34, pageHeight * 0.42)))
 
   const leftRegion: Rect = {
     x: gutter,
@@ -618,8 +728,8 @@ function buildLayout(pageWidth: number, pageHeight: number, lineHeight: number):
   }
 
   const claudeRect: Rect = {
-    x: pageWidth - Math.round(claudeSize * 0.86),
-    y: Math.round(claudeSize * 0.035),
+    x: pageWidth - Math.round(claudeSize * 0.94),
+    y: Math.round(claudeSize * 0.012),
     width: claudeSize,
     height: claudeSize,
   }
@@ -641,32 +751,29 @@ function buildLayout(pageWidth: number, pageHeight: number, lineHeight: number):
 }
 
 async function evaluateLayout(
-  pageWidth: number,
-  pageHeight: number,
+  layout: ReturnType<typeof buildLayout>,
   lineHeight: number,
   preparedBody: PreparedTextWithSegments,
 ): Promise<{
-  layout: ReturnType<typeof buildLayout>
   leftLines: PositionedLine[]
   rightLines: PositionedLine[]
 }> {
-  const layout = buildLayout(pageWidth, pageHeight, lineHeight)
   const [openaiHull, claudeHull] = await Promise.all([
-    getWrapHull(openaiLogo.src, { smoothRadius: 6, mode: 'mean' }),
-    getWrapHull(claudeLogo.src, { smoothRadius: 24, mode: 'envelope', convexify: true }),
+    getWrapHull(domCache.openaiLogo.src, { smoothRadius: 6, mode: 'mean' }),
+    getWrapHull(domCache.claudeLogo.src, { smoothRadius: 24, mode: 'envelope', convexify: true }),
   ])
   const openaiWrap = transformWrapPoints(openaiHull, layout.openaiRect, openaiAngle)
   const claudeWrapRect: Rect = {
-    x: layout.claudeRect.x - Math.round(layout.claudeRect.width * 0.12),
-    y: layout.claudeRect.y - Math.round(layout.claudeRect.height * 0.1),
-    width: Math.round(layout.claudeRect.width * 1.18),
-    height: Math.round(layout.claudeRect.height * 1.16),
+    x: layout.claudeRect.x - Math.round(layout.claudeRect.width * 0.045),
+    y: layout.claudeRect.y - Math.round(layout.claudeRect.height * 0.045),
+    width: Math.round(layout.claudeRect.width * 1.08),
+    height: Math.round(layout.claudeRect.height * 1.08),
   }
   const claudeCapRect: Rect = {
-    x: layout.claudeRect.x - Math.round(layout.claudeRect.width * 0.06),
-    y: layout.claudeRect.y + Math.round(layout.claudeRect.height * 0.05),
-    width: Math.round(layout.claudeRect.width * 1.02),
-    height: Math.round(layout.claudeRect.height * 0.3),
+    x: layout.claudeRect.x - Math.round(layout.claudeRect.width * 0.015),
+    y: layout.claudeRect.y + Math.round(layout.claudeRect.height * 0.09),
+    width: Math.round(layout.claudeRect.width * 0.92),
+    height: Math.round(layout.claudeRect.height * 0.16),
   }
   const claudeWrap = transformWrapPoints(claudeHull, claudeWrapRect, claudeAngle)
 
@@ -690,16 +797,16 @@ async function evaluateLayout(
         claudeWrap,
         bandTop,
         bandBottom,
-        Math.round(lineHeight * 1.85),
-        Math.round(lineHeight * 1.15),
+        Math.round(lineHeight * 0.92),
+        Math.round(lineHeight * 0.48),
       )
       if (interval !== null) intervals.push(interval)
       intervals.push(...getRectIntervalsForBand(
         [claudeCapRect],
         bandTop,
         bandBottom,
-        Math.round(lineHeight * 1.6),
-        Math.round(lineHeight * 0.96),
+        Math.round(lineHeight * 0.72),
+        Math.round(lineHeight * 0.38),
       ))
       return intervals
     },
@@ -736,7 +843,6 @@ async function evaluateLayout(
   )
 
   return {
-    layout,
     leftLines: leftResult.lines,
     rightLines: rightResult.lines,
   }
@@ -749,53 +855,21 @@ async function render(now = performance.now()): Promise<void> {
   const pageHeight = root.clientHeight
   const animating = updateSpinState(now)
   const preparedBody = getPrepared(BODY_COPY, font)
-  const evaluation = await evaluateLayout(pageWidth, pageHeight, lineHeight, preparedBody)
-  const { layout, leftLines, rightLines } = evaluation
-
-  stage.style.height = `${pageHeight}px`
-
-  openaiLogo.style.left = `${layout.openaiRect.x}px`
-  openaiLogo.style.top = `${layout.openaiRect.y}px`
-  openaiLogo.style.width = `${layout.openaiRect.width}px`
-  openaiLogo.style.height = `${layout.openaiRect.height}px`
-  openaiLogo.style.transform = `rotate(${openaiAngle}rad)`
-
-  claudeLogo.style.left = `${layout.claudeRect.x}px`
-  claudeLogo.style.top = `${layout.claudeRect.y}px`
-  claudeLogo.style.width = `${layout.claudeRect.width}px`
-  claudeLogo.style.height = `${layout.claudeRect.height}px`
-  claudeLogo.style.transform = `rotate(${claudeAngle}rad)`
-
-  headline.style.left = `${layout.gutter}px`
-  headline.style.top = `${layout.headlineTop}px`
-  headline.style.width = `${layout.headlineWidth}px`
-  headline.style.height = `${layout.headlineLines.length * layout.headlineLineHeight}px`
-  headline.style.font = `700 ${layout.headlineFontSize}px ${HEADLINE_FONT_FAMILY}`
-  headline.style.lineHeight = `${layout.headlineLineHeight}px`
-  headline.style.letterSpacing = '0px'
-  headline.textContent = ''
-
-  for (const [index, line] of layout.headlineLines.entries()) {
+  const layout = buildLayout(pageWidth, pageHeight, lineHeight)
+  projectStaticLayout(layout)
+  const { leftLines, rightLines } = await evaluateLayout(layout, lineHeight, preparedBody)
+  syncPool(domCache.bodyLines, leftLines.length + rightLines.length, () => {
     const element = document.createElement('div')
-    element.className = 'headline-line'
-    element.textContent = line.text
-    element.style.left = '0px'
-    element.style.top = `${index * layout.headlineLineHeight}px`
-    element.style.font = `700 ${layout.headlineFontSize}px ${HEADLINE_FONT_FAMILY}`
-    element.style.lineHeight = `${layout.headlineLineHeight}px`
-    headline.appendChild(element)
-  }
-
-  credit.style.left = `${layout.gutter + 4}px`
-  credit.style.top = `${layout.creditTop}px`
-  credit.style.width = 'auto'
-  clearRenderedLines()
-  materializeLines(leftLines, 'line line--left', font, lineHeight)
-  materializeLines(rightLines, 'line line--right', font, lineHeight)
+    element.className = 'line'
+    return element
+  })
+  let nextIndex = 0
+  nextIndex = projectBodyLines(leftLines, 'line line--left', font, lineHeight, nextIndex)
+  projectBodyLines(rightLines, 'line line--right', font, lineHeight, nextIndex)
 
   const [openaiHitHull, claudeHitHull] = await Promise.all([
-    getWrapHull(openaiLogo.src, { smoothRadius: 3, mode: 'mean' }),
-    getWrapHull(claudeLogo.src, { smoothRadius: 5, mode: 'mean' }),
+    getWrapHull(domCache.openaiLogo.src, { smoothRadius: 3, mode: 'mean' }),
+    getWrapHull(domCache.claudeLogo.src, { smoothRadius: 5, mode: 'mean' }),
   ])
   currentLogoHits = {
     openai: transformWrapPoints(openaiHitHull, layout.openaiRect, openaiAngle),
